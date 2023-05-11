@@ -11,6 +11,13 @@ precisely to accommodate these sorts of use-cases. Expect that the current
 version of Xarray-TensorStore will break at some point in the future and require
 updates for a new Xarray release.
 
+## Installation
+
+Xarray-TensorStore is available on pypi:
+```
+pip install xarray-tensorstore
+```
+
 ## Usage
 
 Open your Zarr files into an `xarray.Dataset` using `open_zarr()`, and then use
