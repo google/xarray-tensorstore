@@ -17,7 +17,6 @@ import dataclasses
 import math
 import os.path
 import re
-import types
 from typing import Optional, TypeVar
 
 import numpy as np
@@ -26,7 +25,7 @@ import xarray
 from xarray.core import indexing
 
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'  # keep in sync with setup.py
 
 
 Index = TypeVar('Index', int, slice, np.ndarray, None)
@@ -107,6 +106,17 @@ class _TensorStoreAdapter(indexing.ExplicitlyIndexed):
   def __array__(self, dtype: Optional[np.dtype] = None) -> np.ndarray:
     future = self.array.read() if self.future is None else self.future
     return np.asarray(future.result(), dtype=dtype)
+
+  # Work around the missing __copy__ and __deepcopy__ methods from TensorStore,
+  # which are needed for Xarray:
+  # https://github.com/google/tensorstore/issues/109
+  # TensorStore objects are immutable, so there's no need to actually copy them.
+
+  def __copy__(self) -> _TensorStoreAdapter:
+    return type(self)(self.array, self.future)
+
+  def __deepcopy__(self, memo) -> _TensorStoreAdapter:
+    return self.__copy__()
 
 
 def _read_tensorstore(
