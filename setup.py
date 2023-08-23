@@ -18,13 +18,13 @@ import setuptools
 
 setuptools.setup(
     name='xarray-tensorstore',
-    version='0.1.0',
+    version='0.1.1',  # keep in sync with xarray_tensorstore.py
     license='Apache 2.0',
     author='Google LLC',
     author_email='noreply@google.com',
     install_requires=['numpy', 'xarray', 'zarr', 'tensorstore'],
     extras_require={
-        'tests': ['absl-py', 'pandas'],
+        'tests': ['absl-py', 'dask', 'pandas', 'pytest'],
     },
     url='https://github.com/google/xarray-tensorstore',
     py_modules=['xarray_tensorstore'],
