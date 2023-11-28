@@ -15,6 +15,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
 import pandas as pd
+import tensorstore
 import xarray
 import xarray_tensorstore
 
@@ -123,6 +124,16 @@ class XarrayTensorstoreTest(parameterized.TestCase):
     source.to_zarr(path)
     opened = xarray_tensorstore.open_zarr(path)
     opened.sortby('x')  # should not crash
+
+  def test_compute(self):
+    # verify that get_duck_array() is working properly
+    source = xarray.Dataset({'foo': (('x',), np.arange(10))})
+    path = self.create_tempdir().full_path
+    source.to_zarr(path)
+    opened = xarray_tensorstore.open_zarr(path)
+    computed = opened.compute()
+    computed_data = computed['foo'].variable._data
+    self.assertNotIsInstance(computed_data, tensorstore.TensorStore)
 
   def test_open_zarr_from_uri(self):
     source = xarray.Dataset(

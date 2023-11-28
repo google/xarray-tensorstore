@@ -25,7 +25,7 @@ import xarray
 from xarray.core import indexing
 
 
-__version__ = '0.1.1'  # keep in sync with setup.py
+__version__ = '0.1.2'  # keep in sync with setup.py
 
 
 Index = TypeVar('Index', int, slice, np.ndarray, None)
@@ -106,6 +106,10 @@ class _TensorStoreAdapter(indexing.ExplicitlyIndexed):
   def __array__(self, dtype: Optional[np.dtype] = None) -> np.ndarray:
     future = self.array.read() if self.future is None else self.future
     return np.asarray(future.result(), dtype=dtype)
+
+  def get_duck_array(self):
+    # special method for xarray to return an in-memory (computed) representation
+    return np.asarray(self)
 
   # Work around the missing __copy__ and __deepcopy__ methods from TensorStore,
   # which are needed for Xarray:
