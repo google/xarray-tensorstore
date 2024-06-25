@@ -177,6 +177,50 @@ class XarrayTensorstoreTest(parameterized.TestCase):
     self.assertIsNotNone(read.variable._data.future)
     xarray.testing.assert_identical(read, source)
 
+  def test_mask_and_scale(self):
+    source = xarray.DataArray(
+        np.arange(24).reshape(2, 3, 4),
+        dims=('x', 'y', 'z'),
+        name='baz',
+        coords={'x': np.arange(2)},
+    )
+
+    # invalid fill-value
+    source.encoding = {'_FillValue': -1}
+    path = self.create_tempdir().full_path
+    source.to_dataset().chunk().to_zarr(path)
+    expected_msg = (
+        'variable baz has non-NaN fill value, which is not supported by'
+        ' xarray-tensorstore: -1. Consider re-opening with'
+        ' xarray_tensorstore.open_zarr(..., mask_and_scale=False), or falling'
+        ' back to use xarray.open_zarr().'
+    )
+    with self.assertRaisesWithLiteralMatch(ValueError, expected_msg):
+      xarray_tensorstore.open_zarr(path)
+
+    actual = xarray_tensorstore.open_zarr(path, mask_and_scale=False)['baz']
+    xarray.testing.assert_equal(actual, source)  # no values are masked
+
+    # invalid scaling
+    source.encoding = {'scale_factor': 10.0}
+    path = self.create_tempdir().full_path
+    source.to_dataset().chunk().to_zarr(path)
+    expected_msg = 'variable baz uses scale/offset encoding'
+    with self.assertRaisesRegex(ValueError, expected_msg):
+      xarray_tensorstore.open_zarr(path)
+
+    actual = xarray_tensorstore.open_zarr(path, mask_and_scale=False)['baz']
+    self.assertFalse(actual.equals(source))  # not scaled properly
+
+    # valid offset (coordinate only)
+    source.encoding = {}
+    source.coords['x'].encoding = {'add_offset': -1}
+    path = self.create_tempdir().full_path
+    source.to_dataset().chunk().to_zarr(path)
+    actual = xarray_tensorstore.open_zarr(path, mask_and_scale=True)['baz']
+    xarray.testing.assert_identical(actual, source)
+    self.assertEqual(actual.coords['x'].encoding['add_offset'], -1)
+
 
 if __name__ == '__main__':
   absltest.main()

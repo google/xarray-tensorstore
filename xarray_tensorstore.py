@@ -13,6 +13,7 @@
 # limitations under the License.
 """Utilities for loading TensorStore data into Xarray."""
 from __future__ import annotations
+
 import dataclasses
 import math
 import os.path
@@ -25,7 +26,7 @@ import xarray
 from xarray.core import indexing
 
 
-__version__ = '0.1.2'  # keep in sync with setup.py
+__version__ = '0.1.3'  # keep in sync with setup.py
 
 
 Index = TypeVar('Index', int, slice, np.ndarray, None)
@@ -84,6 +85,9 @@ class _TensorStoreAdapter(indexing.ExplicitlyIndexed):
   def __getitem__(self, key: indexing.ExplicitIndexer) -> _TensorStoreAdapter:
     index_tuple = tuple(map(_numpy_to_tensorstore_index, key.tuple, self.shape))
     if isinstance(key, indexing.OuterIndexer):
+      # TODO(shoyer): fix this for newer versions of Xarray.
+      # We get the error message:
+      # AttributeError: '_TensorStoreAdapter' object has no attribute 'oindex'
       indexed = self.array.oindex[index_tuple]
     elif isinstance(key, indexing.VectorizedIndexer):
       indexed = self.array.vindex[index_tuple]
@@ -157,9 +161,34 @@ def _zarr_spec_from_path(path: str) -> ...:
   return {'driver': 'zarr', 'kvstore': kv_store}
 
 
+def _raise_if_mask_and_scale_used_for_data_vars(ds: xarray.Dataset):
+  """Check a dataset for data variables that would need masking or scaling."""
+  advice = (
+      'Consider re-opening with xarray_tensorstore.open_zarr(..., '
+      'mask_and_scale=False), or falling back to use xarray.open_zarr().'
+  )
+  for k in ds:
+    encoding = ds[k].encoding
+    for attr in ['_FillValue', 'missing_value']:
+      fill_value = encoding.get(attr, np.nan)
+      if fill_value == fill_value:  # pylint: disable=comparison-with-itself
+        raise ValueError(
+            f'variable {k} has non-NaN fill value, which is not supported by'
+            f' xarray-tensorstore: {fill_value}. {advice}'
+        )
+    for attr in ['scale_factor', 'add_offset']:
+      if attr in encoding:
+        raise ValueError(
+            f'variable {k} uses scale/offset encoding, which is not supported'
+            f' by xarray-tensorstore: {encoding}. {advice}'
+        )
+
+
 def open_zarr(
     path: str,
-    context: Optional[tensorstore.Context] = None,
+    *,
+    context: tensorstore.Context | None = None,
+    mask_and_scale: bool = True,
 ) -> xarray.Dataset:
   """Open an xarray.Dataset from Zarr using TensorStore.
 
@@ -185,6 +214,9 @@ def open_zarr(
   Args:
     path: path or URI to Zarr group to open.
     context: TensorStore configuration options to use when opening arrays.
+    mask_and_scale: if True (default), attempt to apply masking and scaling like
+      xarray.open_zarr(). This is only supported for coordinate variables and
+      otherwise will raise an error.
 
   Returns:
     Dataset with all data variables opened via TensorStore.
@@ -205,7 +237,14 @@ def open_zarr(
   if context is None:
     context = tensorstore.Context()
 
-  ds = xarray.open_zarr(path, chunks=None)  # chunks=None means avoid using dask
+  # chunks=None means avoid using dask
+  ds = xarray.open_zarr(path, chunks=None, mask_and_scale=mask_and_scale)
+
+  if mask_and_scale:
+    # Data variables get replaced below with _TensorStoreAdapter arrays, which
+    # don't get masked or scaled. Raising an error avoids surprising users with
+    # incorrect data values.
+    _raise_if_mask_and_scale_used_for_data_vars(ds)
 
   specs = {k: _zarr_spec_from_path(os.path.join(path, k)) for k in ds}
   array_futures = {
