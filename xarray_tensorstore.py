@@ -18,7 +18,7 @@ import dataclasses
 import math
 import os.path
 import re
-from typing import Optional, TypeVar
+from typing import Any, Optional, Type, TypeVar
 
 import numpy as np
 import tensorstore
@@ -26,7 +26,7 @@ import xarray
 from xarray.core import indexing
 
 
-__version__ = '0.1.3'  # keep in sync with setup.py
+__version__ = '0.1.4'  # keep in sync with setup.py
 
 
 Index = TypeVar('Index', int, slice, np.ndarray, None)
@@ -56,7 +56,7 @@ def _numpy_to_tensorstore_index(index: Index, size: int) -> Index:
 @dataclasses.dataclass(frozen=True)
 class _TensorStoreAdapter(indexing.ExplicitlyIndexed):
   """TensorStore array that can be wrapped by xarray.Variable.
-
+#
   We use Xarray's semi-internal ExplicitlyIndexed API so that Xarray will not
   attempt to load our array into memory as a NumPy array. In the future, this
   should be supported by public Xarray APIs, as part of the refactor discussed
@@ -98,6 +98,17 @@ class _TensorStoreAdapter(indexing.ExplicitlyIndexed):
     # like NumPy, not absolute like TensorStore
     translated = indexed[tensorstore.d[:].translate_to[0]]
     return type(self)(translated)
+
+  # xarray>2024.02.0 uses oindex and vindex properties, which are expected to
+  # return objects whose __getitem__ method supports the appropriate form of
+  # indexing.
+  @property
+  def oindex(self) -> _TensorStoreAdapter:
+    return self
+
+  @property
+  def vindex(self) -> _TensorStoreAdapter:
+    return self
 
   def transpose(self, order: tuple[int, ...]) -> _TensorStoreAdapter:
     transposed = self.array[tensorstore.d[order].transpose[:]]
