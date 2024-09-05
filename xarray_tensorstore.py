@@ -26,7 +26,7 @@ import xarray
 from xarray.core import indexing
 
 
-__version__ = '0.1.3'  # keep in sync with setup.py
+__version__ = '0.1.4'  # keep in sync with setup.py
 
 
 Index = TypeVar('Index', int, slice, np.ndarray, None)
@@ -98,6 +98,17 @@ class _TensorStoreAdapter(indexing.ExplicitlyIndexed):
     # like NumPy, not absolute like TensorStore
     translated = indexed[tensorstore.d[:].translate_to[0]]
     return type(self)(translated)
+
+  # xarray>2024.02.0 uses oindex and vindex properties, which are expected to
+  # return objects whose __getitem__ method supports the appropriate form of
+  # indexing.
+  @property
+  def oindex(self) -> _TensorStoreAdapter:
+    return self
+
+  @property
+  def vindex(self) -> _TensorStoreAdapter:
+    return self
 
   def transpose(self, order: tuple[int, ...]) -> _TensorStoreAdapter:
     transposed = self.array[tensorstore.d[order].transpose[:]]
