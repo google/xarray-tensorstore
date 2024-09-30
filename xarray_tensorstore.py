@@ -118,7 +118,7 @@ class _TensorStoreAdapter(indexing.ExplicitlyIndexed):
     future = self.array.read()
     return type(self)(self.array, future)
 
-  def __array__(self, dtype: Optional[np.dtype] = None) -> np.ndarray:
+  def __array__(self, dtype: Optional[np.dtype] = None) -> np.ndarray:  # type: ignore
     future = self.array.read() if self.future is None else self.future
     return np.asarray(future.result(), dtype=dtype)
 
