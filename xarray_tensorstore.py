@@ -18,7 +18,7 @@ import dataclasses
 import math
 import os.path
 import re
-from typing import Optional, TypeVar
+from typing import Any, Optional, Type, TypeVar
 
 import numpy as np
 import tensorstore
@@ -56,7 +56,7 @@ def _numpy_to_tensorstore_index(index: Index, size: int) -> Index:
 @dataclasses.dataclass(frozen=True)
 class _TensorStoreAdapter(indexing.ExplicitlyIndexed):
   """TensorStore array that can be wrapped by xarray.Variable.
-
+#
   We use Xarray's semi-internal ExplicitlyIndexed API so that Xarray will not
   attempt to load our array into memory as a NumPy array. In the future, this
   should be supported by public Xarray APIs, as part of the refactor discussed
