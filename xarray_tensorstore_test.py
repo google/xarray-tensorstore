@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import tensorstore
 import xarray
+from xarray.core import indexing
 import xarray_tensorstore
 
 
