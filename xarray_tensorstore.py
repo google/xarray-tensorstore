@@ -108,6 +108,7 @@ class _TensorStoreAdapter(indexing.ExplicitlyIndexed):
     else:
       assert isinstance(key, indexing.BasicIndexer)
       self.array[index_tuple] = value
+    self.future = None
 
   # xarray>2024.02.0 uses oindex and vindex properties, which are expected to
   # return objects whose __getitem__ method supports the appropriate form of
