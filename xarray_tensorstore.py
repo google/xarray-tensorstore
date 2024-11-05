@@ -102,9 +102,6 @@ class _TensorStoreAdapter(indexing.ExplicitlyIndexed):
   def __setitem__(self, key: indexing.ExplicitIndexer, value) -> None:
     index_tuple = tuple(map(_numpy_to_tensorstore_index, key.tuple, self.shape))
     if isinstance(key, indexing.OuterIndexer):
-      # TODO(shoyer): fix this for newer versions of Xarray.
-      # We get the error message:
-      # AttributeError: '_TensorStoreAdapter' object has no attribute 'oindex'
       self.array.oindex[index_tuple] = value
     elif isinstance(key, indexing.VectorizedIndexer):
       self.array.vindex[index_tuple] = value
