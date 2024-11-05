@@ -98,7 +98,7 @@ class _TensorStoreAdapter(indexing.ExplicitlyIndexed):
     # like NumPy, not absolute like TensorStore
     translated = indexed[tensorstore.d[:].translate_to[0]]
     return type(self)(translated)
-  
+
   def __setitem__(self, key: indexing.ExplicitIndexer, value) -> None:
     index_tuple = tuple(map(_numpy_to_tensorstore_index, key.tuple, self.shape))
     if isinstance(key, indexing.OuterIndexer):
@@ -108,7 +108,7 @@ class _TensorStoreAdapter(indexing.ExplicitlyIndexed):
     else:
       assert isinstance(key, indexing.BasicIndexer)
       self.array[index_tuple] = value
-  
+
   # xarray>2024.02.0 uses oindex and vindex properties, which are expected to
   # return objects whose __getitem__ method supports the appropriate form of
   # indexing.

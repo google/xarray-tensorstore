@@ -137,9 +137,7 @@ class XarrayTensorstoreTest(parameterized.TestCase):
     self.assertNotIsInstance(computed_data, tensorstore.TensorStore)
 
   def test_open_zarr_from_uri(self):
-    source = xarray.Dataset(
-        {'baz': (('x', 'y', 'z'), np.arange(24).reshape(2, 3, 4))}
-    )
+    source = xarray.Dataset({'baz': (('x', 'y', 'z'), np.arange(24).reshape(2, 3, 4))})
     path = self.create_tempdir().full_path
     source.chunk().to_zarr(path)
 
@@ -223,40 +221,40 @@ class XarrayTensorstoreTest(parameterized.TestCase):
     self.assertEqual(actual.coords['x'].encoding['add_offset'], -1)
 
   @parameterized.named_parameters(
-   {
-    "testcase_name": "basic_indexing",
-    "key": indexing.BasicIndexer((slice(1, None), slice(None), slice(None))),
-    "numpy_key": (slice(1, None), slice(None), slice(None)),
-    "value": np.full((1, 2, 3), -1),
-   },
-   {
-    "testcase_name": "outer_indexing",
-    "key": indexing.OuterIndexer((np.array([0]), np.array([1]), slice(None))),
-    "numpy_key": (np.array([0]), np.array([1]), slice(None)),
-    "value": np.full((1, 1, 3), -2),
-   },
-   {
-    "testcase_name": "vectorized_indexing",
-    "key": indexing.VectorizedIndexer(
-     (np.array([0, 1]), np.array([0, 1]), slice(None))
-    ),
-    "numpy_key": (np.array([0, 1]), np.array([0, 1]), slice(None)),
-    "value": np.full((2, 3), -3),
-   },
+      {
+          'testcase_name': 'basic_indexing',
+          'key': indexing.BasicIndexer((slice(1, None), slice(None), slice(None))),
+          'numpy_key': (slice(1, None), slice(None), slice(None)),
+          'value': np.full((1, 2, 3), -1),
+      },
+      {
+          'testcase_name': 'outer_indexing',
+          'key': indexing.OuterIndexer((np.array([0]), np.array([1]), slice(None))),
+          'numpy_key': (np.array([0]), np.array([1]), slice(None)),
+          'value': np.full((1, 1, 3), -2),
+      },
+      {
+          'testcase_name': 'vectorized_indexing',
+          'key': indexing.VectorizedIndexer(
+              (np.array([0, 1]), np.array([0, 1]), slice(None))
+          ),
+          'numpy_key': (np.array([0, 1]), np.array([0, 1]), slice(None)),
+          'value': np.full((2, 3), -3),
+      },
   )
   def test_setitem(self, key, numpy_key, value):
-   source_data = np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]])
-   source = tensorstore.array(
-    source_data, dtype=source_data.dtype, context=tensorstore.Context()
-   )
-   adapter = xarray_tensorstore._TensorStoreAdapter(source)
- 
-   adapter[key] = value
-   result = adapter.array.read().result()
-   expected = source_data.copy()
-   expected[numpy_key] = value
-   print(result)
-   np.testing.assert_equal(result, expected)
+    source_data = np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]])
+    source = tensorstore.array(
+        source_data, dtype=source_data.dtype, context=tensorstore.Context()
+    )
+    adapter = xarray_tensorstore._TensorStoreAdapter(source)
+
+    adapter[key] = value
+    result = adapter.array.read().result()
+    expected = source_data.copy()
+    expected[numpy_key] = value
+    print(result)
+    np.testing.assert_equal(result, expected)
 
 
 if __name__ == '__main__':
