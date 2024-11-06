@@ -26,11 +26,11 @@ import xarray
 from xarray.core import indexing
 
 
-__version__ = "0.1.4"  # keep in sync with setup.py
+__version__ = '0.1.4'  # keep in sync with setup.py
 
 
-Index = TypeVar("Index", int, slice, np.ndarray, None)
-XarrayData = TypeVar("XarrayData", xarray.Dataset, xarray.DataArray)
+Index = TypeVar('Index', int, slice, np.ndarray, None)
+XarrayData = TypeVar('XarrayData', xarray.Dataset, xarray.DataArray)
 
 
 def _numpy_to_tensorstore_index(index: Index, size: int) -> Index:
@@ -167,42 +167,42 @@ def read(xarraydata: XarrayData, /) -> XarrayData:
   elif isinstance(xarraydata, xarray.DataArray):
     data = _read_tensorstore(xarraydata.variable._data)
   else:
-    raise TypeError(f"argument is not a DataArray or Dataset: {xarraydata}")
+    raise TypeError(f'argument is not a DataArray or Dataset: {xarraydata}')
   # pylint: enable=protected-access
   return xarraydata.copy(data=data)
 
 
-_DEFAULT_STORAGE_DRIVER = "file"
+_DEFAULT_STORAGE_DRIVER = 'file'
 
 
 def _zarr_spec_from_path(path: str) -> ...:
-  if re.match(r"\w+\://", path):  # path is a URI
+  if re.match(r'\w+\://', path):  # path is a URI
     kv_store = path
   else:
-    kv_store = {"driver": _DEFAULT_STORAGE_DRIVER, "path": path}
-  return {"driver": "zarr", "kvstore": kv_store}
+    kv_store = {'driver': _DEFAULT_STORAGE_DRIVER, 'path': path}
+  return {'driver': 'zarr', 'kvstore': kv_store}
 
 
 def _raise_if_mask_and_scale_used_for_data_vars(ds: xarray.Dataset):
   """Check a dataset for data variables that would need masking or scaling."""
   advice = (
-      "Consider re-opening with xarray_tensorstore.open_zarr(..., "
-      "mask_and_scale=False), or falling back to use xarray.open_zarr()."
+      'Consider re-opening with xarray_tensorstore.open_zarr(..., '
+      'mask_and_scale=False), or falling back to use xarray.open_zarr().'
   )
   for k in ds:
     encoding = ds[k].encoding
-    for attr in ["_FillValue", "missing_value"]:
+    for attr in ['_FillValue', 'missing_value']:
       fill_value = encoding.get(attr, np.nan)
       if fill_value == fill_value:  # pylint: disable=comparison-with-itself
         raise ValueError(
-            f"variable {k} has non-NaN fill value, which is not supported by"
-            f" xarray-tensorstore: {fill_value}. {advice}"
+            f'variable {k} has non-NaN fill value, which is not supported by'
+            f' xarray-tensorstore: {fill_value}. {advice}'
         )
-    for attr in ["scale_factor", "add_offset"]:
+    for attr in ['scale_factor', 'add_offset']:
       if attr in encoding:
         raise ValueError(
-            f"variable {k} uses scale/offset encoding, which is not supported"
-            f" by xarray-tensorstore: {encoding}. {advice}"
+            f'variable {k} uses scale/offset encoding, which is not supported'
+            f' by xarray-tensorstore: {encoding}. {advice}'
         )
 
 
@@ -211,7 +211,7 @@ def open_zarr(
     *,
     context: tensorstore.Context | None = None,
     mask_and_scale: bool = True,
-    mode: str = "r",
+    mode: str = 'r',
 ) -> xarray.Dataset:
   """Open an xarray.Dataset from Zarr using TensorStore.
 
@@ -272,7 +272,7 @@ def open_zarr(
 
   specs = {k: _zarr_spec_from_path(os.path.join(path, k)) for k in ds}
   array_futures = {
-      k: tensorstore.open(spec, read=True, write=mode.lower() == "r+", context=context)
+      k: tensorstore.open(spec, read=True, write=mode.lower() == 'r+', context=context)
       for k, spec in specs.items()
   }
   arrays = {k: v.result() for k, v in array_futures.items()}
