@@ -248,7 +248,7 @@ class XarrayTensorstoreTest(parameterized.TestCase):
     path = self.create_tempdir().full_path
     source.to_dataset().chunk().to_zarr(path)
 
-    opened = xarray_tensorstore.open_zarr(path, mode='r+')['baz']
+    opened = xarray_tensorstore.open_zarr(path, write=True)['baz']
 
     opened[key] = value
     read = xarray_tensorstore.read(opened)
