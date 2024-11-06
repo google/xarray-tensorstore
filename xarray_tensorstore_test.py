@@ -248,7 +248,7 @@ class XarrayTensorstoreTest(parameterized.TestCase):
     path = self.create_tempdir().full_path
     source.to_dataset().chunk().to_zarr(path)
 
-    opened = xarray_tensorstore.open_zarr(path, mode="r+")['baz']
+    opened = xarray_tensorstore.open_zarr(path, mode='r+')['baz']
 
     opened[key] = value
     read = xarray_tensorstore.read(opened)
@@ -264,17 +264,18 @@ class XarrayTensorstoreTest(parameterized.TestCase):
     xarray.testing.assert_equal(read, expected)
 
     def test_setitem_readonly(self):
-        source = xarray.DataArray(
-            np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]),
-            dims=('x', 'y', 'z'),
-            name='baz',
-        )
-        path = self.create_tempdir().full_path
-        source.to_dataset().chunk().to_zarr(path)
+      source = xarray.DataArray(
+          np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]),
+          dims=('x', 'y', 'z'),
+          name='baz',
+      )
+      path = self.create_tempdir().full_path
+      source.to_dataset().chunk().to_zarr(path)
 
-        opened = xarray_tensorstore.open_zarr(path)['baz']
-        with pytest.raises(ValueError):
-            opened[1:,...] = np.full((1, 2, 3), -1)
+      opened = xarray_tensorstore.open_zarr(path)['baz']
+      with pytest.raises(ValueError):
+        opened[1:, ...] = np.full((1, 2, 3), -1)
+
 
 if __name__ == '__main__':
   absltest.main()

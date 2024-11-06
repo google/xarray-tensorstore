@@ -241,7 +241,7 @@ def open_zarr(
     mask_and_scale: if True (default), attempt to apply masking and scaling like
       xarray.open_zarr(). This is only supported for coordinate variables and
       otherwise will raise an error.
-    mode: file mode to use when opening the Zarr group, either ‘r’ for read 
+    mode: file mode to use when opening the Zarr group, either ‘r’ for read
       only; or ‘r+’ for read/write (Zarr must exist).
 
   Returns:
