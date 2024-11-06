@@ -1,13 +1,13 @@
 # Copyright 2023 Google LLC
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
+# Licensed under the Apache License, Version 2.0 (the 'License');
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
 #     https://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
+# distributed under the License is distributed on an 'AS IS' BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
@@ -15,8 +15,10 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
 import pandas as pd
+import pytest
 import tensorstore
 import xarray
+from xarray.core import indexing
 import xarray_tensorstore
 
 
@@ -136,9 +138,7 @@ class XarrayTensorstoreTest(parameterized.TestCase):
     self.assertNotIsInstance(computed_data, tensorstore.TensorStore)
 
   def test_open_zarr_from_uri(self):
-    source = xarray.Dataset(
-        {'baz': (('x', 'y', 'z'), np.arange(24).reshape(2, 3, 4))}
-    )
+    source = xarray.Dataset({'baz': (('x', 'y', 'z'), np.arange(24).reshape(2, 3, 4))})
     path = self.create_tempdir().full_path
     source.chunk().to_zarr(path)
 
@@ -220,6 +220,61 @@ class XarrayTensorstoreTest(parameterized.TestCase):
     actual = xarray_tensorstore.open_zarr(path, mask_and_scale=True)['baz']
     xarray.testing.assert_identical(actual, source)
     self.assertEqual(actual.coords['x'].encoding['add_offset'], -1)
+
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'basic_indexing',
+          'key': (slice(1, None), slice(None), slice(None)),
+          'value': np.full((1, 2, 3), -1),
+      },
+      {
+          'testcase_name': 'outer_indexing',
+          'key': (np.array([0]), np.array([1]), slice(None)),
+          'value': np.full((1, 1, 3), -2),
+      },
+      {
+          'testcase_name': 'vectorized_indexing',
+          'key': (np.array([0]), np.array([0, 1]), slice(None)),
+          'value': np.full((2, 3), -3),
+      },
+  )
+  def test_setitem(self, key, value):
+    source_data = np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]])
+    source = xarray.DataArray(
+        source_data,
+        dims=('x', 'y', 'z'),
+        name='baz',
+    )
+    path = self.create_tempdir().full_path
+    source.to_dataset().chunk().to_zarr(path)
+
+    opened = xarray_tensorstore.open_zarr(path, write=True)['baz']
+
+    opened[key] = value
+    read = xarray_tensorstore.read(opened)
+
+    expected_data = source_data.copy()
+    expected_data[key] = value
+    expected = xarray.DataArray(
+        expected_data,
+        dims=('x', 'y', 'z'),
+        name='baz',
+    )
+
+    xarray.testing.assert_equal(read, expected)
+
+  def test_setitem_readonly(self):
+    source = xarray.DataArray(
+        np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]),
+        dims=('x', 'y', 'z'),
+        name='baz',
+    )
+    path = self.create_tempdir().full_path
+    source.to_dataset().chunk().to_zarr(path)
+
+    opened = xarray_tensorstore.open_zarr(path)['baz']
+    with pytest.raises(ValueError):
+      opened[1:, ...] = np.full((1, 2, 3), -1)
 
 
 if __name__ == '__main__':

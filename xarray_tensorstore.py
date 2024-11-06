@@ -99,6 +99,18 @@ class _TensorStoreAdapter(indexing.ExplicitlyIndexed):
     translated = indexed[tensorstore.d[:].translate_to[0]]
     return type(self)(translated)
 
+  def __setitem__(self, key: indexing.ExplicitIndexer, value) -> None:
+    index_tuple = tuple(map(_numpy_to_tensorstore_index, key.tuple, self.shape))
+    if isinstance(key, indexing.OuterIndexer):
+      self.array.oindex[index_tuple] = value
+    elif isinstance(key, indexing.VectorizedIndexer):
+      self.array.vindex[index_tuple] = value
+    else:
+      assert isinstance(key, indexing.BasicIndexer)
+      self.array[index_tuple] = value
+    # Invalidate the future so that the next read will pick up the new value
+    object.__setattr__(self, 'future', None)
+
   # xarray>2024.02.0 uses oindex and vindex properties, which are expected to
   # return objects whose __getitem__ method supports the appropriate form of
   # indexing.
@@ -200,6 +212,7 @@ def open_zarr(
     *,
     context: tensorstore.Context | None = None,
     mask_and_scale: bool = True,
+    write: bool = False,
 ) -> xarray.Dataset:
   """Open an xarray.Dataset from Zarr using TensorStore.
 
@@ -228,6 +241,7 @@ def open_zarr(
     mask_and_scale: if True (default), attempt to apply masking and scaling like
       xarray.open_zarr(). This is only supported for coordinate variables and
       otherwise will raise an error.
+    write: Allow write access. Defaults to False.
 
   Returns:
     Dataset with all data variables opened via TensorStore.
@@ -259,7 +273,7 @@ def open_zarr(
 
   specs = {k: _zarr_spec_from_path(os.path.join(path, k)) for k in ds}
   array_futures = {
-      k: tensorstore.open(spec, read=True, write=False, context=context)
+      k: tensorstore.open(spec, read=True, write=write, context=context)
       for k, spec in specs.items()
   }
   arrays = {k: v.result() for k, v in array_futures.items()}
