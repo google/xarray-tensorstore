@@ -226,28 +226,19 @@ class XarrayTensorstoreTest(parameterized.TestCase):
           'testcase_name': 'basic_indexing',
           'key': (slice(1, None), slice(None), slice(None)),
           'value': np.full((1, 2, 3), -1),
-          'mode': 'r+',
       },
       {
           'testcase_name': 'outer_indexing',
           'key': (np.array([0]), np.array([1]), slice(None)),
           'value': np.full((1, 1, 3), -2),
-          'mode': 'r+',
       },
       {
           'testcase_name': 'vectorized_indexing',
           'key': (np.array([0]), np.array([0, 1]), slice(None)),
           'value': np.full((2, 3), -3),
-          'mode': 'r+',
-      },
-      {
-          'testcase_name': 'read_only',
-          'key': (slice(1, None), slice(None), slice(None)),
-          'value': np.full((1, 2, 3), -1),
-          'mode': 'r',
       },
   )
-  def test_setitem(self, key, value, mode):
+  def test_setitem(self, key, value):
     source_data = np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]])
     source = xarray.DataArray(
         source_data,
@@ -257,11 +248,7 @@ class XarrayTensorstoreTest(parameterized.TestCase):
     path = self.create_tempdir().full_path
     source.to_dataset().chunk().to_zarr(path)
 
-    opened = xarray_tensorstore.open_zarr(path, mode=mode)['baz']
-    if mode == 'r':
-      with pytest.raises(ValueError):
-        opened[key] = value
-      return
+    opened = xarray_tensorstore.open_zarr(path, mode="r+")['baz']
 
     opened[key] = value
     read = xarray_tensorstore.read(opened)
@@ -276,6 +263,18 @@ class XarrayTensorstoreTest(parameterized.TestCase):
 
     xarray.testing.assert_equal(read, expected)
 
+    def test_setitem_readonly(self):
+        source = xarray.DataArray(
+            np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]),
+            dims=('x', 'y', 'z'),
+            name='baz',
+        )
+        path = self.create_tempdir().full_path
+        source.to_dataset().chunk().to_zarr(path)
+
+        opened = xarray_tensorstore.open_zarr(path)['baz']
+        with pytest.raises(ValueError):
+            opened[1:,...] = np.full((1, 2, 3), -1)
 
 if __name__ == '__main__':
   absltest.main()

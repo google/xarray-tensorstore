@@ -108,7 +108,8 @@ class _TensorStoreAdapter(indexing.ExplicitlyIndexed):
     else:
       assert isinstance(key, indexing.BasicIndexer)
       self.array[index_tuple] = value
-    self.future = None
+    # Invalidate the future so that the next read will pick up the new value
+    object.__setattr__(self, 'future', None)
 
   # xarray>2024.02.0 uses oindex and vindex properties, which are expected to
   # return objects whose __getitem__ method supports the appropriate form of
@@ -240,7 +241,8 @@ def open_zarr(
     mask_and_scale: if True (default), attempt to apply masking and scaling like
       xarray.open_zarr(). This is only supported for coordinate variables and
       otherwise will raise an error.
-    mode: file mode to use when opening the Zarr group, either ‘r’ for read only; or ‘r+’ for read/write (Zarr must exist).
+    mode: file mode to use when opening the Zarr group, either ‘r’ for read 
+      only; or ‘r+’ for read/write (Zarr must exist).
 
   Returns:
     Dataset with all data variables opened via TensorStore.
