@@ -26,7 +26,7 @@ import xarray
 from xarray.core import indexing
 
 
-__version__ = '0.1.4'  # keep in sync with setup.py
+__version__ = '0.1.5'  # keep in sync with setup.py
 
 
 Index = TypeVar('Index', int, slice, np.ndarray, None)
