@@ -271,7 +271,11 @@ def open_zarr(
   ds = xarray.open_zarr(path, chunks=None, mask_and_scale=mask_and_scale)
 
   # find out if its 2 or 3
-  zarr_format = zarr.open(path).metadata.zarr_format
+  try:
+    zarr_format = zarr.open(path).metadata.zarr_format
+  except:
+    # try to open it, but if it fails, assume zarr_format 2
+    zarr_format = 2
 
   if mask_and_scale:
     # Data variables get replaced below with _TensorStoreAdapter arrays, which
