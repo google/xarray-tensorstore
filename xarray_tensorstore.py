@@ -23,6 +23,7 @@ from typing import Optional, TypeVar
 import numpy as np
 import tensorstore
 import xarray
+import zarr
 from xarray.core import indexing
 
 
@@ -176,12 +177,16 @@ def read(xarraydata: XarrayData, /) -> XarrayData:
 _DEFAULT_STORAGE_DRIVER = 'file'
 
 
-def _zarr_spec_from_path(path: str) -> ...:
+def _zarr_spec_from_path(path: str, zarr_format) -> ...:
   if re.match(r'\w+\://', path):  # path is a URI
     kv_store = path
   else:
     kv_store = {'driver': _DEFAULT_STORAGE_DRIVER, 'path': path}
-  return {'driver': 'zarr', 'kvstore': kv_store}
+
+  if zarr_format == 2:
+    return {'driver': 'zarr', 'kvstore': kv_store}
+  else:
+    return {'driver': 'zarr3', 'kvstore': kv_store}
 
 
 def _raise_if_mask_and_scale_used_for_data_vars(ds: xarray.Dataset):
@@ -265,13 +270,16 @@ def open_zarr(
   # chunks=None means avoid using dask
   ds = xarray.open_zarr(path, chunks=None, mask_and_scale=mask_and_scale)
 
+  # find out if its 2 or 3
+  zarr_format = zarr.open(path).metadata.zarr_format
+
   if mask_and_scale:
     # Data variables get replaced below with _TensorStoreAdapter arrays, which
     # don't get masked or scaled. Raising an error avoids surprising users with
     # incorrect data values.
     _raise_if_mask_and_scale_used_for_data_vars(ds)
 
-  specs = {k: _zarr_spec_from_path(os.path.join(path, k)) for k in ds}
+  specs = {k: _zarr_spec_from_path(os.path.join(path, k), zarr_format) for k in ds}
   array_futures = {
       k: tensorstore.open(spec, read=True, write=write, context=context)
       for k, spec in specs.items()
