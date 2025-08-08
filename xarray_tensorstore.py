@@ -177,14 +177,14 @@ def read(xarraydata: XarrayData, /) -> XarrayData:
 _DEFAULT_STORAGE_DRIVER = 'file'
 
 
-def _zarr_spec_from_path(path: str, zarr_format) -> ...:
+def _zarr_spec_from_path(path: str, zarr_format: int) -> ...:
   if re.match(r'\w+\://', path):  # path is a URI
     kv_store = path
   else:
     kv_store = {'driver': _DEFAULT_STORAGE_DRIVER, 'path': path}
 
   if zarr_format == 2:
-    return {'driver': 'zarr', 'kvstore': kv_store}
+    return {'driver': 'zarr2', 'kvstore': kv_store}
   else:
     return {'driver': 'zarr3', 'kvstore': kv_store}
 
