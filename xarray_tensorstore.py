@@ -272,6 +272,7 @@ def open_zarr(
 
   # find out if its 2 or 3
   try:
+    # this should work with zarr>=3 - https://github.com/zarr-developers/zarr-python
     zarr_format = zarr.open(path).metadata.zarr_format
   except:
     # try to open it, but if it fails, assume zarr_format 2
