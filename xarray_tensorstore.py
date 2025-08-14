@@ -21,9 +21,11 @@ import re
 from typing import Optional, TypeVar
 
 import numpy as np
+import packaging
 import tensorstore
 import xarray
 from xarray.core import indexing
+import zarr
 
 
 __version__ = '0.1.5'  # keep in sync with setup.py
@@ -176,12 +178,12 @@ def read(xarraydata: XarrayData, /) -> XarrayData:
 _DEFAULT_STORAGE_DRIVER = 'file'
 
 
-def _zarr_spec_from_path(path: str) -> ...:
+def _zarr_spec_from_path(path: str, zarr_format: int) -> ...:
   if re.match(r'\w+\://', path):  # path is a URI
     kv_store = path
   else:
     kv_store = {'driver': _DEFAULT_STORAGE_DRIVER, 'path': path}
-  return {'driver': 'zarr', 'kvstore': kv_store}
+  return {'driver': f'zarr{zarr_format}', 'kvstore': kv_store}
 
 
 def _raise_if_mask_and_scale_used_for_data_vars(ds: xarray.Dataset):
@@ -205,6 +207,14 @@ def _raise_if_mask_and_scale_used_for_data_vars(ds: xarray.Dataset):
             f'variable {k} uses scale/offset encoding, which is not supported'
             f' by xarray-tensorstore: {encoding}. {advice}'
         )
+
+
+def _get_zarr_format(path: str) -> int:
+  """Returns the Zarr format of the given path."""
+  if packaging.version.parse(zarr.__version__).major >= 3:
+    return zarr.open_group(path, mode='r').metadata.zarr_format
+  else:
+    return 2
 
 
 def open_zarr(
@@ -271,7 +281,10 @@ def open_zarr(
     # incorrect data values.
     _raise_if_mask_and_scale_used_for_data_vars(ds)
 
-  specs = {k: _zarr_spec_from_path(os.path.join(path, k)) for k in ds}
+  zarr_format = _get_zarr_format(path)
+  specs = {
+      k: _zarr_spec_from_path(os.path.join(path, k), zarr_format) for k in ds
+  }
   array_futures = {
       k: tensorstore.open(spec, read=True, write=write, context=context)
       for k, spec in specs.items()

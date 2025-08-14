@@ -14,12 +14,16 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
+import packaging
 import pandas as pd
 import pytest
 import tensorstore
 import xarray
-from xarray.core import indexing
 import xarray_tensorstore
+import zarr
+
+
+_USING_ZARR_PYTHON_3 = packaging.version.parse(zarr.__version__).major >= 3
 
 
 class XarrayTensorstoreTest(parameterized.TestCase):
@@ -145,13 +149,19 @@ class XarrayTensorstoreTest(parameterized.TestCase):
     opened = xarray_tensorstore.open_zarr('file://' + path)
     xarray.testing.assert_identical(source, opened)
 
-  def test_read_dataset(self):
+  @parameterized.parameters(
+      {'zarr_format': 2},
+      {'zarr_format': 3},
+  )
+  def test_read_dataset(self, zarr_format):
+    if not _USING_ZARR_PYTHON_3 and zarr_format == 3:
+      self.skipTest('zarr format 3 is not supported in zarr < 3.0.0')
     source = xarray.Dataset(
         {'baz': (('x', 'y', 'z'), np.arange(24).reshape(2, 3, 4))},
         coords={'x': np.arange(2)},
     )
     path = self.create_tempdir().full_path
-    source.chunk().to_zarr(path)
+    source.chunk().to_zarr(path, zarr_format=zarr_format)
 
     opened = xarray_tensorstore.open_zarr(path)
     read = xarray_tensorstore.read(opened)
@@ -160,7 +170,13 @@ class XarrayTensorstoreTest(parameterized.TestCase):
     self.assertIsNotNone(read.variables['baz']._data.future)
     xarray.testing.assert_identical(read, source)
 
-  def test_read_dataarray(self):
+  @parameterized.parameters(
+      {'zarr_format': 2},
+      {'zarr_format': 3},
+  )
+  def test_read_dataarray(self, zarr_format):
+    if not _USING_ZARR_PYTHON_3  and zarr_format == 3:
+      self.skipTest('zarr format 3 is not supported in zarr < 3.0.0')
     source = xarray.DataArray(
         np.arange(24).reshape(2, 3, 4),
         dims=('x', 'y', 'z'),
@@ -168,7 +184,7 @@ class XarrayTensorstoreTest(parameterized.TestCase):
         coords={'x': np.arange(2)},
     )
     path = self.create_tempdir().full_path
-    source.to_dataset().chunk().to_zarr(path)
+    source.to_dataset().chunk().to_zarr(path, zarr_format=zarr_format)
 
     opened = xarray_tensorstore.open_zarr(path)['baz']
     read = xarray_tensorstore.read(opened)
