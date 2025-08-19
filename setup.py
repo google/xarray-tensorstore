@@ -22,9 +22,9 @@ setuptools.setup(
     license='Apache-2.0',
     author='Google LLC',
     author_email='noreply@google.com',
-    install_requires=['numpy', 'xarray', 'zarr', 'tensorstore'],
+    install_requires=['numpy', 'xarray', 'zarr', 'tensorstore', 'dask'],
     extras_require={
-        'tests': ['absl-py', 'dask', 'pandas', 'pytest'],
+        'tests': ['absl-py', 'pandas', 'pytest'],
     },
     url={'source': 'https://github.com/google/xarray-tensorstore'},
     py_modules=['xarray_tensorstore'],
