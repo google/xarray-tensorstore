@@ -20,7 +20,7 @@ pip install xarray-tensorstore
 
 ## Usage
 
-Open your Zarr files into an `xarray.Dataset` using `open_zarr()`, and then use
+Open a Zarr file into an `xarray.Dataset` using `open_zarr()`, and then use
 `read()` to start reading data in the background:
 
 ```python
@@ -37,6 +37,19 @@ read_example = xarray_tensorstore.read(example)
 # Blocking conversion of the data into NumPy arrays. This happens sequentially,
 # one array at a time, unless you call read() first.
 numpy_example = read_example.compute()
+```
+
+Open a list of Zarr files and concatenate them along a single dimension using
+`open_concatenated_zarrs()`. The returned `xarray.Dataset` behaves exactly as above.
+This function requires the Dask package to be installed.
+
+```python
+import xarray_tensorstore
+
+ds = xarray_tensorstore.open_concatenated_zarrs(
+    paths=[path1, path2],
+    concat_dim="time",
+)
 ```
 
 ## Limitations

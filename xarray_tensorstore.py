@@ -336,37 +336,40 @@ def open_concatenated_zarrs(
     context: tensorstore.Context | None = None,
     mask_and_scale: bool = True,
 ) -> xarray.Dataset:
-    """Open an xarray.Dataset whilst concatenating multiple Zarr using TensorStore.
+  """Open an xarray.Dataset whilst concatenating multiple Zarr using TensorStore.
 
-    Args:
-      paths: List of paths to zarr stores.
-      concat_dim: Dimension along which to concatenate the data variables.
-      context: TensorStore context.
-      mask_and_scale: Whether to mask and scale the data.
+  Notes:
+    This function depends on the Dask package.
 
-    Returns:
-      Concatentated Dataset with all data variables opened via TensorStore.
-    """
-    if context is None:
-      context = tensorstore.Context()
+  Args:
+    paths: List of paths to zarr stores.
+    concat_dim: Dimension along which to concatenate the data variables.
+    context: TensorStore context.
+    mask_and_scale: Whether to mask and scale the data.
 
-    ds = xarray.open_mfdataset(
-      paths,
-      concat_dim=concat_dim,
-      combine="nested",
-      mask_and_scale=mask_and_scale,
-      engine="zarr"
-    )
+  Returns:
+    Concatentated Dataset with all data variables opened via TensorStore.
+  """
+  if context is None:
+    context = tensorstore.Context()
 
-    if mask_and_scale:
-      # Data variables get replaced below with _TensorStoreAdapter arrays, which
-      # don't get masked or scaled. Raising an error avoids surprising users with
-      # incorrect data values.
-      _raise_if_mask_and_scale_used_for_data_vars(ds)
+  ds = xarray.open_mfdataset(
+    paths,
+    concat_dim=concat_dim,
+    combine="nested",
+    mask_and_scale=mask_and_scale,
+    engine="zarr"
+  )
 
-    data_vars = list(ds.data_vars)
-    concat_axes = [ds[v].dims.index(concat_dim) for v in data_vars]
-    arrays = _tensorstore_open_concatenated_zarrs(paths, data_vars, concat_axes, context)
-    new_data = {k: _TensorStoreAdapter(v) for k, v in arrays.items()}
+  if mask_and_scale:
+    # Data variables get replaced below with _TensorStoreAdapter arrays, which
+    # don't get masked or scaled. Raising an error avoids surprising users with
+    # incorrect data values.
+    _raise_if_mask_and_scale_used_for_data_vars(ds)
 
-    return ds.copy(data=new_data)
+  data_vars = list(ds.data_vars)
+  concat_axes = [ds[v].dims.index(concat_dim) for v in data_vars]
+  arrays = _tensorstore_open_concatenated_zarrs(paths, data_vars, concat_axes, context)
+  new_data = {k: _TensorStoreAdapter(v) for k, v in arrays.items()}
+
+  return ds.copy(data=new_data)

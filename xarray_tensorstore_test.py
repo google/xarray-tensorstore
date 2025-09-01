@@ -88,8 +88,8 @@ test_cases = [
 
 class XarrayTensorstoreTest(parameterized.TestCase):
 
-    # TODO(shoyer): consider using hypothesis to convert these into
-    # property-based tests
+  # TODO(shoyer): consider using hypothesis to convert these into
+  # property-based tests
   @parameterized.named_parameters(test_cases)
   def test_open_zarr(self, transform):
     source = xarray.Dataset(
@@ -134,7 +134,7 @@ class XarrayTensorstoreTest(parameterized.TestCase):
     zarr_dir = self.create_tempdir().full_path
     paths = [f"{zarr_dir}/{i}" for i in range(len(sources))]
     for source, path in zip(sources, paths, strict=True):
-        source.chunk().to_zarr(path)
+      source.chunk().to_zarr(path)
 
     expected = transform(xarray.concat(sources, dim="x"))
     actual = transform(xarray_tensorstore.open_concatenated_zarrs(paths, concat_dim="x")).compute()
