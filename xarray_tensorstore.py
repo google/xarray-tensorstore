@@ -293,3 +293,83 @@ def open_zarr(
   new_data = {k: _TensorStoreAdapter(v) for k, v in arrays.items()}
 
   return ds.copy(data=new_data)
+
+
+def _tensorstore_open_concatenated_zarrs(
+    paths: list[str],
+    data_vars: list[str],
+    concat_axes: list[int],
+    context: tensorstore.Context,
+) -> dict[str, tensorstore.TensorStore]:
+  """Open multiple zarrs with TensorStore.
+
+  Args:
+      paths: List of paths to zarr stores.
+      data_vars: List of data variable names to open.
+      concat_axes: List of axes along which to concatenate the data variables.
+      context: TensorStore context.
+  """
+  # Open all arrays in all datasets using tensorstore
+  arrays_list = []
+  for path in paths:
+    zarr_format = _get_zarr_format(path)
+    specs = {k: _zarr_spec_from_path(os.path.join(path, k), zarr_format) for k in data_vars}
+    array_futures = {
+      k: tensorstore.open(spec, read=True, write=False, context=context)
+      for k, spec in specs.items()
+    }
+    arrays_list.append(array_futures)
+  
+  # Concatenate the tensorstore arrays
+  arrays = {}
+  for k, axis in zip(data_vars, concat_axes, strict=True):
+    datasets = [array_futures[k].result() for array_futures in arrays_list]
+    arrays[k] = tensorstore.concat(datasets, axis=axis)
+
+  return arrays
+
+
+def open_concatenated_zarrs(
+    paths: list[str],
+    concat_dim: str,
+    *,
+    context: tensorstore.Context | None = None,
+    mask_and_scale: bool = True,
+) -> xarray.Dataset:
+  """Open an xarray.Dataset whilst concatenating multiple Zarr using TensorStore.
+
+  Notes:
+    This function depends on the Dask package.
+
+  Args:
+    paths: List of paths to zarr stores.
+    concat_dim: Dimension along which to concatenate the data variables.
+    context: TensorStore context.
+    mask_and_scale: Whether to mask and scale the data.
+
+  Returns:
+    Concatentated Dataset with all data variables opened via TensorStore.
+  """
+  if context is None:
+    context = tensorstore.Context()
+
+  ds = xarray.open_mfdataset(
+    paths,
+    concat_dim=concat_dim,
+    combine="nested",
+    mask_and_scale=mask_and_scale,
+    engine="zarr"
+  )
+
+  if mask_and_scale:
+    # Data variables get replaced below with _TensorStoreAdapter arrays, which
+    # don't get masked or scaled. Raising an error avoids surprising users with
+    # incorrect data values.
+    _raise_if_mask_and_scale_used_for_data_vars(ds)
+
+  data_vars = list(ds.data_vars)
+  concat_axes = [ds[v].dims.index(concat_dim) for v in data_vars]
+  arrays = _tensorstore_open_concatenated_zarrs(paths, data_vars, concat_axes, context)
+  new_data = {k: _TensorStoreAdapter(v) for k, v in arrays.items()}
+
+  return ds.copy(data=new_data)
