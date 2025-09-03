@@ -25,12 +25,7 @@ import zarr
 
 _USING_ZARR_PYTHON_3 = packaging.version.parse(zarr.__version__).major >= 3
 
-
-class XarrayTensorstoreTest(parameterized.TestCase):
-
-  @parameterized.named_parameters(
-      # TODO(shoyer): consider using hypothesis to convert these into
-      # property-based tests
+test_cases = [
       {
           'testcase_name': 'base',
           'transform': lambda ds: ds,
@@ -88,7 +83,14 @@ class XarrayTensorstoreTest(parameterized.TestCase):
           'testcase_name': 'select_a_variable',
           'transform': lambda ds: ds['foo'],
       },
-  )
+]
+
+
+class XarrayTensorstoreTest(parameterized.TestCase):
+
+  # TODO(shoyer): consider using hypothesis to convert these into
+  # property-based tests
+  @parameterized.named_parameters(test_cases)
   def test_open_zarr(self, transform):
     source = xarray.Dataset(
         {
@@ -108,6 +110,34 @@ class XarrayTensorstoreTest(parameterized.TestCase):
 
     expected = transform(source)
     actual = transform(xarray_tensorstore.open_zarr(path)).compute()
+    xarray.testing.assert_identical(actual, expected)
+
+  @parameterized.named_parameters(test_cases)
+  def test_open_concatenated_zarrs(self, transform):
+    sources = [
+        xarray.Dataset(
+            {
+                'foo': (('x',), x, {'local': 'local metadata'}),
+                'bar': (('x', 'y'), np.arange(6).reshape(2, 3)),
+                'baz': (('x', 'y', 'z'), np.arange(24).reshape(2, 3, 4)),
+            },
+            coords={
+                'x': [1, 2],
+                'y': pd.to_datetime(['2000-01-01', '2000-01-02', '2000-01-03']),
+                'z': ['a', 'b', 'c', 'd'],
+            },
+            attrs={'global': 'global metadata'},
+        )
+        for x in [range(0,2), range(3, 5)]
+    ]
+
+    zarr_dir = self.create_tempdir().full_path
+    paths = [f"{zarr_dir}/{i}" for i in range(len(sources))]
+    for source, path in zip(sources, paths, strict=True):
+      source.chunk().to_zarr(path)
+
+    expected = transform(xarray.concat(sources, dim="x"))
+    actual = transform(xarray_tensorstore.open_concatenated_zarrs(paths, concat_dim="x")).compute()
     xarray.testing.assert_identical(actual, expected)
 
   @parameterized.parameters(
