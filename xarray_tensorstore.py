@@ -28,7 +28,7 @@ from xarray.core import indexing
 import zarr
 
 
-__version__ = '0.1.5'  # keep in sync with setup.py
+__version__ = '0.2.0'  # keep in sync with setup.py
 
 
 Index = TypeVar('Index', int, slice, np.ndarray, None)
@@ -319,7 +319,7 @@ def _tensorstore_open_concatenated_zarrs(
       for k, spec in specs.items()
     }
     arrays_list.append(array_futures)
-  
+
   # Concatenate the tensorstore arrays
   arrays = {}
   for k, axis in zip(data_vars, concat_axes, strict=True):

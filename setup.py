@@ -18,7 +18,7 @@ import setuptools
 
 setuptools.setup(
     name='xarray-tensorstore',
-    version='0.1.5',  # keep in sync with xarray_tensorstore.py
+    version='0.2.0',  # keep in sync with xarray_tensorstore.py
     license='Apache-2.0',
     author='Google LLC',
     author_email='noreply@google.com',
