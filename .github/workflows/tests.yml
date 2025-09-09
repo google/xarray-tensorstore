@@ -51,7 +51,7 @@ jobs:
     # * Repo is self (prevents running from forks)
     # * Branch is `main`
     if: |
-      github.repository == 'google/xarray-beam'
+      github.repository == 'google/xarray-Tensorstore'
       && github.ref == 'refs/heads/main'
     needs: tests  # Only publish after tests are successful
     runs-on: ubuntu-latest
