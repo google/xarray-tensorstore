@@ -26,7 +26,7 @@ setuptools.setup(
     extras_require={
         'tests': ['absl-py', 'pandas', 'pytest', 'dask'],
     },
-    url={'source': 'https://github.com/google/xarray-tensorstore'},
+    urls={'source': 'https://github.com/google/xarray-tensorstore'},
     py_modules=['xarray_tensorstore'],
     python_requires='>=3.10',
 )
