@@ -11,12 +11,13 @@ on:
 
 jobs:
   tests:
-    name: "python ${{ matrix.python-version }} tests"
+    name: "python=${{ matrix.python-version }} zarr=${{ matrix.zarr-version }} tests"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13"]
+        zarr-version: [">=2,<3", ">=3"]
     steps:
     - name: Cancel previous
       uses: styfle/cancel-workflow-action@0.7.0
@@ -40,7 +41,7 @@ jobs:
         key: ${{ runner.os }}-pip-${{ hashFiles('**/setup.py') }}
     - name: Install Xarray-Tensorstore
       run: |
-        pip install -e .[tests]
+        pip install -e .[tests] "zarr${{ matrix.zarr-version }}"
     - name: Run unit tests
       run: |
         pytest .

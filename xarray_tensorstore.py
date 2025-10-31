@@ -28,7 +28,7 @@ from xarray.core import indexing
 import zarr
 
 
-__version__ = '0.2.0'  # keep in sync with setup.py
+__version__ = '0.3.0'  # keep in sync with setup.py
 
 
 Index = TypeVar('Index', int, slice, np.ndarray, None)
@@ -217,12 +217,49 @@ def _get_zarr_format(path: str) -> int:
     return 2
 
 
+def _open_tensorstore_arrays(
+    path: str,
+    names: list[str],
+    group: zarr.Group | None,
+    zarr_format: int,
+    write: bool,
+    context: tensorstore.Context | None = None,
+) -> dict[str, tensorstore.Future]:
+  """Open all arrays in a Zarr group using TensorStore."""
+  specs = {
+      k: _zarr_spec_from_path(os.path.join(path, k), zarr_format) for k in names
+  }
+
+  assume_metadata = False
+  if packaging.version.parse(zarr.__version__).major >= 3 and group is not None:
+    consolidated_metadata = group.metadata.consolidated_metadata
+    if consolidated_metadata is not None:
+      assume_metadata = True
+      for name in names:
+        metadata = consolidated_metadata.metadata[name].to_dict()
+        metadata.pop('attributes', None)  # not supported by TensorStore
+        specs[name]['metadata'] = metadata
+
+  array_futures = {}
+  for k, spec in specs.items():
+    array_futures[k] = tensorstore.open(
+        spec,
+        read=True,
+        write=write,
+        open=True,
+        context=context,
+        assume_metadata=assume_metadata,
+    )
+  return array_futures
+
+
 def open_zarr(
     path: str,
     *,
     context: tensorstore.Context | None = None,
     mask_and_scale: bool = True,
     write: bool = False,
+    consolidated: bool | None = None,
 ) -> xarray.Dataset:
   """Open an xarray.Dataset from Zarr using TensorStore.
 
@@ -252,6 +289,9 @@ def open_zarr(
       xarray.open_zarr(). This is only supported for coordinate variables and
       otherwise will raise an error.
     write: Allow write access. Defaults to False.
+    consolidated: If True, read consolidated metadata. By default, an attempt to
+      use consolidated metadata is made with a fallback to non-consolidated
+      metadata, like in Xarray.
 
   Returns:
     Dataset with all data variables opened via TensorStore.
@@ -272,8 +312,19 @@ def open_zarr(
   if context is None:
     context = tensorstore.Context()
 
-  # chunks=None means avoid using dask
-  ds = xarray.open_zarr(path, chunks=None, mask_and_scale=mask_and_scale)
+  # Open Xarray's backends.ZarrStore directly so we can get access to the
+  # underlying Zarr group's consolidated metadata.
+  store = xarray.backends.ZarrStore.open_group(
+      path, consolidated=consolidated
+  )
+  group = store.zarr_group
+  ds = xarray.open_dataset(
+      filename_or_obj='',  # ignored in favor of store=
+      chunks=None,  # avoid using dask
+      mask_and_scale=mask_and_scale,
+      store=store,
+      engine='zarr',
+  )
 
   if mask_and_scale:
     # Data variables get replaced below with _TensorStoreAdapter arrays, which
@@ -282,13 +333,9 @@ def open_zarr(
     _raise_if_mask_and_scale_used_for_data_vars(ds)
 
   zarr_format = _get_zarr_format(path)
-  specs = {
-      k: _zarr_spec_from_path(os.path.join(path, k), zarr_format) for k in ds
-  }
-  array_futures = {
-      k: tensorstore.open(spec, read=True, write=write, context=context)
-      for k, spec in specs.items()
-  }
+  array_futures = _open_tensorstore_arrays(
+      path, list(ds), group, zarr_format, write=write, context=context
+  )
   arrays = {k: v.result() for k, v in array_futures.items()}
   new_data = {k: _TensorStoreAdapter(v) for k, v in arrays.items()}
 
@@ -304,20 +351,26 @@ def _tensorstore_open_concatenated_zarrs(
   """Open multiple zarrs with TensorStore.
 
   Args:
-      paths: List of paths to zarr stores.
-      data_vars: List of data variable names to open.
-      concat_axes: List of axes along which to concatenate the data variables.
-      context: TensorStore context.
+    paths: List of paths to zarr stores.
+    data_vars: List of data variable names to open.
+    concat_axes: List of axes along which to concatenate the data variables.
+    context: TensorStore context.
+
+  Returns:
+    Dictionary of data variable names to concatenated TensorStore arrays.
   """
   # Open all arrays in all datasets using tensorstore
   arrays_list = []
   for path in paths:
     zarr_format = _get_zarr_format(path)
-    specs = {k: _zarr_spec_from_path(os.path.join(path, k), zarr_format) for k in data_vars}
-    array_futures = {
-      k: tensorstore.open(spec, read=True, write=False, context=context)
-      for k, spec in specs.items()
-    }
+    # TODO(shoyer): Figure out how to support opening concatenated Zarrs with
+    # consolidated metadata. xarray.open_mfdataset() doesn't support opening
+    # from an existing store, so we'd have to replicate that functionality for
+    # figuring out the structure of the concatenated dataset.
+    group = None
+    array_futures = _open_tensorstore_arrays(
+        path, data_vars, group, zarr_format, write=False, context=context
+    )
     arrays_list.append(array_futures)
 
   # Concatenate the tensorstore arrays
@@ -354,11 +407,11 @@ def open_concatenated_zarrs(
     context = tensorstore.Context()
 
   ds = xarray.open_mfdataset(
-    paths,
-    concat_dim=concat_dim,
-    combine="nested",
-    mask_and_scale=mask_and_scale,
-    engine="zarr"
+      paths,
+      concat_dim=concat_dim,
+      combine='nested',
+      mask_and_scale=mask_and_scale,
+      engine='zarr',
   )
 
   if mask_and_scale:
@@ -369,7 +422,9 @@ def open_concatenated_zarrs(
 
   data_vars = list(ds.data_vars)
   concat_axes = [ds[v].dims.index(concat_dim) for v in data_vars]
-  arrays = _tensorstore_open_concatenated_zarrs(paths, data_vars, concat_axes, context)
+  arrays = _tensorstore_open_concatenated_zarrs(
+      paths, data_vars, concat_axes, context
+  )
   new_data = {k: _TensorStoreAdapter(v) for k, v in arrays.items()}
 
   return ds.copy(data=new_data)

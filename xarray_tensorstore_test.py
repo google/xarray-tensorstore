@@ -26,63 +26,63 @@ import zarr
 _USING_ZARR_PYTHON_3 = packaging.version.parse(zarr.__version__).major >= 3
 
 test_cases = [
-      {
-          'testcase_name': 'base',
-          'transform': lambda ds: ds,
-      },
-      {
-          'testcase_name': 'transposed',
-          'transform': lambda ds: ds.transpose('z', 'x', 'y'),
-      },
-      {
-          'testcase_name': 'basic_int',
-          'transform': lambda ds: ds.isel(y=1),
-      },
-      {
-          'testcase_name': 'negative_int',
-          'transform': lambda ds: ds.isel(y=-1),
-      },
-      {
-          'testcase_name': 'basic_slice',
-          'transform': lambda ds: ds.isel(z=slice(2)),
-      },
-      {
-          'testcase_name': 'full_slice',
-          'transform': lambda ds: ds.isel(z=slice(0, 4)),
-      },
-      {
-          'testcase_name': 'out_of_bounds_slice',
-          'transform': lambda ds: ds.isel(z=slice(0, 10)),
-      },
-      {
-          'testcase_name': 'strided_slice',
-          'transform': lambda ds: ds.isel(z=slice(0, None, 2)),
-      },
-      {
-          'testcase_name': 'negative_stride_slice',
-          'transform': lambda ds: ds.isel(z=slice(None, None, -1)),
-      },
-      {
-          'testcase_name': 'repeated_indexing',
-          'transform': lambda ds: ds.isel(z=slice(1, None)).isel(z=0),
-      },
-      {
-          'testcase_name': 'oindex',
-          # includes repeated, negative and out of order indices
-          'transform': lambda ds: ds.isel(x=[0], y=[1, 1], z=[1, -1, 0]),
-      },
-      {
-          'testcase_name': 'vindex',
-          'transform': lambda ds: ds.isel(x=('w', [0, 1]), y=('w', [1, 2])),
-      },
-      {
-          'testcase_name': 'mixed_indexing_types',
-          'transform': lambda ds: ds.isel(x=0, y=slice(2), z=[-1]),
-      },
-      {
-          'testcase_name': 'select_a_variable',
-          'transform': lambda ds: ds['foo'],
-      },
+    {
+        'testcase_name': 'base',
+        'transform': lambda ds: ds,
+    },
+    {
+        'testcase_name': 'transposed',
+        'transform': lambda ds: ds.transpose('z', 'x', 'y'),
+    },
+    {
+        'testcase_name': 'basic_int',
+        'transform': lambda ds: ds.isel(y=1),
+    },
+    {
+        'testcase_name': 'negative_int',
+        'transform': lambda ds: ds.isel(y=-1),
+    },
+    {
+        'testcase_name': 'basic_slice',
+        'transform': lambda ds: ds.isel(z=slice(2)),
+    },
+    {
+        'testcase_name': 'full_slice',
+        'transform': lambda ds: ds.isel(z=slice(0, 4)),
+    },
+    {
+        'testcase_name': 'out_of_bounds_slice',
+        'transform': lambda ds: ds.isel(z=slice(0, 10)),
+    },
+    {
+        'testcase_name': 'strided_slice',
+        'transform': lambda ds: ds.isel(z=slice(0, None, 2)),
+    },
+    {
+        'testcase_name': 'negative_stride_slice',
+        'transform': lambda ds: ds.isel(z=slice(None, None, -1)),
+    },
+    {
+        'testcase_name': 'repeated_indexing',
+        'transform': lambda ds: ds.isel(z=slice(1, None)).isel(z=0),
+    },
+    {
+        'testcase_name': 'oindex',
+        # includes repeated, negative and out of order indices
+        'transform': lambda ds: ds.isel(x=[0], y=[1, 1], z=[1, -1, 0]),
+    },
+    {
+        'testcase_name': 'vindex',
+        'transform': lambda ds: ds.isel(x=('w', [0, 1]), y=('w', [1, 2])),
+    },
+    {
+        'testcase_name': 'mixed_indexing_types',
+        'transform': lambda ds: ds.isel(x=0, y=slice(2), z=[-1]),
+    },
+    {
+        'testcase_name': 'select_a_variable',
+        'transform': lambda ds: ds['foo'],
+    },
 ]
 
 
@@ -128,16 +128,18 @@ class XarrayTensorstoreTest(parameterized.TestCase):
             },
             attrs={'global': 'global metadata'},
         )
-        for x in [range(0,2), range(3, 5)]
+        for x in [range(0, 2), range(3, 5)]
     ]
 
     zarr_dir = self.create_tempdir().full_path
-    paths = [f"{zarr_dir}/{i}" for i in range(len(sources))]
+    paths = [f'{zarr_dir}/{i}' for i in range(len(sources))]
     for source, path in zip(sources, paths, strict=True):
       source.chunk().to_zarr(path)
 
-    expected = transform(xarray.concat(sources, dim="x"))
-    actual = transform(xarray_tensorstore.open_concatenated_zarrs(paths, concat_dim="x")).compute()
+    expected = transform(xarray.concat(sources, dim='x'))
+    actual = transform(
+        xarray_tensorstore.open_concatenated_zarrs(paths, concat_dim='x')
+    ).compute()
     xarray.testing.assert_identical(actual, expected)
 
   @parameterized.parameters(
@@ -172,7 +174,9 @@ class XarrayTensorstoreTest(parameterized.TestCase):
     self.assertNotIsInstance(computed_data, tensorstore.TensorStore)
 
   def test_open_zarr_from_uri(self):
-    source = xarray.Dataset({'baz': (('x', 'y', 'z'), np.arange(24).reshape(2, 3, 4))})
+    source = xarray.Dataset(
+        {'baz': (('x', 'y', 'z'), np.arange(24).reshape(2, 3, 4))}
+    )
     path = self.create_tempdir().full_path
     source.chunk().to_zarr(path)
 
@@ -180,10 +184,12 @@ class XarrayTensorstoreTest(parameterized.TestCase):
     xarray.testing.assert_identical(source, opened)
 
   @parameterized.parameters(
-      {'zarr_format': 2},
-      {'zarr_format': 3},
+      {'zarr_format': 2, 'consolidated': True},
+      {'zarr_format': 3, 'consolidated': True},
+      {'zarr_format': 2, 'consolidated': False},
+      {'zarr_format': 3, 'consolidated': False},
   )
-  def test_read_dataset(self, zarr_format):
+  def test_read_dataset(self, zarr_format: int, consolidated: bool):
     if not _USING_ZARR_PYTHON_3 and zarr_format == 3:
       self.skipTest('zarr format 3 is not supported in zarr < 3.0.0')
     source = xarray.Dataset(
@@ -191,7 +197,9 @@ class XarrayTensorstoreTest(parameterized.TestCase):
         coords={'x': np.arange(2)},
     )
     path = self.create_tempdir().full_path
-    source.chunk().to_zarr(path, zarr_format=zarr_format)
+    source.chunk().to_zarr(
+        path, zarr_format=zarr_format, consolidated=consolidated
+    )
 
     opened = xarray_tensorstore.open_zarr(path)
     read = xarray_tensorstore.read(opened)
@@ -204,8 +212,8 @@ class XarrayTensorstoreTest(parameterized.TestCase):
       {'zarr_format': 2},
       {'zarr_format': 3},
   )
-  def test_read_dataarray(self, zarr_format):
-    if not _USING_ZARR_PYTHON_3  and zarr_format == 3:
+  def test_read_dataarray(self, zarr_format: int):
+    if not _USING_ZARR_PYTHON_3 and zarr_format == 3:
       self.skipTest('zarr format 3 is not supported in zarr < 3.0.0')
     source = xarray.DataArray(
         np.arange(24).reshape(2, 3, 4),
