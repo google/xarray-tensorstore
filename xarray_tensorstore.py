@@ -178,7 +178,7 @@ def read(xarraydata: XarrayData, /) -> XarrayData:
 _DEFAULT_STORAGE_DRIVER = 'file'
 
 
-def _zarr_spec_from_path(path: str, zarr_format: int) -> ...:
+def _zarr_spec_from_path(path: str, zarr_format: int):
   if re.match(r'\w+\://', path):  # path is a URI
     kv_store = path
   else:
