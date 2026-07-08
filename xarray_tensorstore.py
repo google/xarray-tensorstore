@@ -39,7 +39,7 @@ def _numpy_to_tensorstore_index(index: Index, size: int) -> Index:
   """Switch from NumPy to TensorStore indexing conventions."""
   # https://google.github.io/tensorstore/python/indexing.html#differences-compared-to-numpy-indexing
   if index is None:
-    return None
+    return None  # pyrefly: ignore[bad-return]
   elif isinstance(index, int):
     # Negative integers do not count from the end in TensorStore
     return index + size if index < 0 else index
@@ -49,10 +49,10 @@ def _numpy_to_tensorstore_index(index: Index, size: int) -> Index:
     if stop is not None:
       # TensorStore does not allow out of bounds slicing
       stop = min(stop, size)
-    return slice(start, stop, index.step)
+    return slice(start, stop, index.step)  # pyrefly: ignore[bad-return]
   else:
     assert isinstance(index, np.ndarray)
-    return np.where(index < 0, index + size, index)
+    return np.where(index < 0, index + size, index)  # pyrefly: ignore[bad-return]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -164,15 +164,15 @@ def read(xarraydata: XarrayData, /) -> XarrayData:
   # pylint: disable=protected-access
   if isinstance(xarraydata, xarray.Dataset):
     data = {
-        name: _read_tensorstore(var.variable._data)
+        name: _read_tensorstore(var.variable._data)  # pyrefly: ignore[bad-argument-type]
         for name, var in xarraydata.data_vars.items()
     }
   elif isinstance(xarraydata, xarray.DataArray):
-    data = _read_tensorstore(xarraydata.variable._data)
+    data = _read_tensorstore(xarraydata.variable._data)  # pyrefly: ignore[bad-argument-type]
   else:
     raise TypeError(f'argument is not a DataArray or Dataset: {xarraydata}')
   # pylint: enable=protected-access
-  return xarraydata.copy(data=data)
+  return xarraydata.copy(data=data)  # pyrefly: ignore[bad-argument-type]
 
 
 _DEFAULT_STORAGE_DRIVER = 'file'
@@ -334,7 +334,7 @@ def open_zarr(
 
   zarr_format = _get_zarr_format(path)
   array_futures = _open_tensorstore_arrays(
-      path, list(ds), group, zarr_format, write=write, context=context
+      path, list(ds), group, zarr_format, write=write, context=context  # pyrefly: ignore[bad-argument-type]
   )
   arrays = {k: v.result() for k, v in array_futures.items()}
   new_data = {k: _TensorStoreAdapter(v) for k, v in arrays.items()}
