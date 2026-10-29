@@ -1,0 +1,335 @@
+# Copyright 2023 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the 'License');
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an 'AS IS' BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+from absl.testing import absltest
+from absl.testing import parameterized
+import numpy as np
+import packaging
+import pandas as pd
+import pytest
+import tensorstore
+import xarray
+import xarray_tensorstore
+import zarr
+
+
+_USING_ZARR_PYTHON_3 = packaging.version.parse(zarr.__version__).major >= 3
+
+test_cases = [
+    {
+        'testcase_name': 'base',
+        'transform': lambda ds: ds,
+    },
+    {
+        'testcase_name': 'transposed',
+        'transform': lambda ds: ds.transpose('z', 'x', 'y'),
+    },
+    {
+        'testcase_name': 'basic_int',
+        'transform': lambda ds: ds.isel(y=1),
+    },
+    {
+        'testcase_name': 'negative_int',
+        'transform': lambda ds: ds.isel(y=-1),
+    },
+    {
+        'testcase_name': 'basic_slice',
+        'transform': lambda ds: ds.isel(z=slice(2)),
+    },
+    {
+        'testcase_name': 'full_slice',
+        'transform': lambda ds: ds.isel(z=slice(0, 4)),
+    },
+    {
+        'testcase_name': 'out_of_bounds_slice',
+        'transform': lambda ds: ds.isel(z=slice(0, 10)),
+    },
+    {
+        'testcase_name': 'strided_slice',
+        'transform': lambda ds: ds.isel(z=slice(0, None, 2)),
+    },
+    {
+        'testcase_name': 'negative_stride_slice',
+        'transform': lambda ds: ds.isel(z=slice(None, None, -1)),
+    },
+    {
+        'testcase_name': 'repeated_indexing',
+        'transform': lambda ds: ds.isel(z=slice(1, None)).isel(z=0),
+    },
+    {
+        'testcase_name': 'oindex',
+        # includes repeated, negative and out of order indices
+        'transform': lambda ds: ds.isel(x=[0], y=[1, 1], z=[1, -1, 0]),
+    },
+    {
+        'testcase_name': 'vindex',
+        'transform': lambda ds: ds.isel(x=('w', [0, 1]), y=('w', [1, 2])),
+    },
+    {
+        'testcase_name': 'mixed_indexing_types',
+        'transform': lambda ds: ds.isel(x=0, y=slice(2), z=[-1]),
+    },
+    {
+        'testcase_name': 'select_a_variable',
+        'transform': lambda ds: ds['foo'],
+    },
+]
+
+
+class XarrayTensorstoreTest(parameterized.TestCase):
+
+  # TODO(shoyer): consider using hypothesis to convert these into
+  # property-based tests
+  @parameterized.named_parameters(test_cases)
+  def test_open_zarr(self, transform):
+    source = xarray.Dataset(
+        {
+            'foo': (('x',), np.arange(2), {'local': 'local metadata'}),
+            'bar': (('x', 'y'), np.arange(6).reshape(2, 3)),
+            'baz': (('x', 'y', 'z'), np.arange(24).reshape(2, 3, 4)),
+        },
+        coords={
+            'x': [1, 2],
+            'y': pd.to_datetime(['2000-01-01', '2000-01-02', '2000-01-03']),
+            'z': ['a', 'b', 'c', 'd'],
+        },
+        attrs={'global': 'global metadata'},
+    )
+    path = self.create_tempdir().full_path
+    source.chunk().to_zarr(path)
+
+    expected = transform(source)
+    actual = transform(xarray_tensorstore.open_zarr(path)).compute()
+    xarray.testing.assert_identical(actual, expected)
+
+  @parameterized.named_parameters(test_cases)
+  def test_open_concatenated_zarrs(self, transform):
+    sources = [
+        xarray.Dataset(
+            {
+                'foo': (('x',), x, {'local': 'local metadata'}),
+                'bar': (('x', 'y'), np.arange(6).reshape(2, 3)),
+                'baz': (('x', 'y', 'z'), np.arange(24).reshape(2, 3, 4)),
+            },
+            coords={
+                'x': [1, 2],
+                'y': pd.to_datetime(['2000-01-01', '2000-01-02', '2000-01-03']),
+                'z': ['a', 'b', 'c', 'd'],
+            },
+            attrs={'global': 'global metadata'},
+        )
+        for x in [range(0, 2), range(3, 5)]
+    ]
+
+    zarr_dir = self.create_tempdir().full_path
+    paths = [f'{zarr_dir}/{i}' for i in range(len(sources))]
+    for source, path in zip(sources, paths, strict=True):
+      source.chunk().to_zarr(path)
+
+    expected = transform(xarray.concat(sources, dim='x'))
+    actual = transform(
+        xarray_tensorstore.open_concatenated_zarrs(paths, concat_dim='x')
+    ).compute()
+    xarray.testing.assert_identical(actual, expected)
+
+  @parameterized.parameters(
+      {'deep': True},
+      {'deep': False},
+  )
+  def test_copy(self, deep):
+    source = xarray.Dataset({'foo': (('x',), np.arange(10))})
+    path = self.create_tempdir().full_path
+    source.to_zarr(path)
+    opened = xarray_tensorstore.open_zarr(path)
+    copied = opened.copy(deep=deep)
+    xarray.testing.assert_identical(copied, source)
+
+  def test_sortby(self):
+    # regression test for https://github.com/google/xarray-tensorstore/issues/1
+    x = np.arange(10)
+    source = xarray.Dataset({'foo': (('x',), x)}, {'x': x[::-1]})
+    path = self.create_tempdir().full_path
+    source.to_zarr(path)
+    opened = xarray_tensorstore.open_zarr(path)
+    opened.sortby('x')  # should not crash
+
+  def test_compute(self):
+    # verify that get_duck_array() is working properly
+    source = xarray.Dataset({'foo': (('x',), np.arange(10))})
+    path = self.create_tempdir().full_path
+    source.to_zarr(path)
+    opened = xarray_tensorstore.open_zarr(path)
+    computed = opened.compute()
+    computed_data = computed['foo'].variable._data
+    self.assertNotIsInstance(computed_data, tensorstore.TensorStore)
+
+  def test_open_zarr_from_uri(self):
+    source = xarray.Dataset(
+        {'baz': (('x', 'y', 'z'), np.arange(24).reshape(2, 3, 4))}
+    )
+    path = self.create_tempdir().full_path
+    source.chunk().to_zarr(path)
+
+    opened = xarray_tensorstore.open_zarr('file://' + path)
+    xarray.testing.assert_identical(source, opened)
+
+  @parameterized.parameters(
+      {'zarr_format': 2, 'consolidated': True},
+      {'zarr_format': 3, 'consolidated': True},
+      {'zarr_format': 2, 'consolidated': False},
+      {'zarr_format': 3, 'consolidated': False},
+  )
+  def test_read_dataset(self, zarr_format: int, consolidated: bool):
+    if not _USING_ZARR_PYTHON_3 and zarr_format == 3:
+      self.skipTest('zarr format 3 is not supported in zarr < 3.0.0')
+    source = xarray.Dataset(
+        {'baz': (('x', 'y', 'z'), np.arange(24).reshape(2, 3, 4))},
+        coords={'x': np.arange(2)},
+    )
+    path = self.create_tempdir().full_path
+    source.chunk().to_zarr(
+        path, zarr_format=zarr_format, consolidated=consolidated
+    )
+
+    opened = xarray_tensorstore.open_zarr(path)
+    read = xarray_tensorstore.read(opened)
+
+    self.assertIsNone(opened.variables['baz']._data.future)
+    self.assertIsNotNone(read.variables['baz']._data.future)
+    xarray.testing.assert_identical(read, source)
+
+  @parameterized.parameters(
+      {'zarr_format': 2},
+      {'zarr_format': 3},
+  )
+  def test_read_dataarray(self, zarr_format: int):
+    if not _USING_ZARR_PYTHON_3 and zarr_format == 3:
+      self.skipTest('zarr format 3 is not supported in zarr < 3.0.0')
+    source = xarray.DataArray(
+        np.arange(24).reshape(2, 3, 4),
+        dims=('x', 'y', 'z'),
+        name='baz',
+        coords={'x': np.arange(2)},
+    )
+    path = self.create_tempdir().full_path
+    source.to_dataset().chunk().to_zarr(path, zarr_format=zarr_format)
+
+    opened = xarray_tensorstore.open_zarr(path)['baz']
+    read = xarray_tensorstore.read(opened)
+
+    self.assertIsNone(opened.variable._data.future)
+    self.assertIsNotNone(read.variable._data.future)
+    xarray.testing.assert_identical(read, source)
+
+  def test_mask_and_scale(self):
+    source = xarray.DataArray(
+        np.arange(24).reshape(2, 3, 4),
+        dims=('x', 'y', 'z'),
+        name='baz',
+        coords={'x': np.arange(2)},
+    )
+
+    # invalid fill-value
+    source.encoding = {'_FillValue': -1}
+    path = self.create_tempdir().full_path
+    source.to_dataset().chunk().to_zarr(path)
+    expected_msg = (
+        'variable baz has non-NaN fill value, which is not supported by'
+        ' xarray-tensorstore: -1. Consider re-opening with'
+        ' xarray_tensorstore.open_zarr(..., mask_and_scale=False), or falling'
+        ' back to use xarray.open_zarr().'
+    )
+    with self.assertRaisesWithLiteralMatch(ValueError, expected_msg):
+      xarray_tensorstore.open_zarr(path)
+
+    actual = xarray_tensorstore.open_zarr(path, mask_and_scale=False)['baz']
+    xarray.testing.assert_equal(actual, source)  # no values are masked
+
+    # invalid scaling
+    source.encoding = {'scale_factor': 10.0}
+    path = self.create_tempdir().full_path
+    source.to_dataset().chunk().to_zarr(path)
+    expected_msg = 'variable baz uses scale/offset encoding'
+    with self.assertRaisesRegex(ValueError, expected_msg):
+      xarray_tensorstore.open_zarr(path)
+
+    actual = xarray_tensorstore.open_zarr(path, mask_and_scale=False)['baz']
+    self.assertFalse(actual.equals(source))  # not scaled properly
+
+    # valid offset (coordinate only)
+    source.encoding = {}
+    source.coords['x'].encoding = {'add_offset': -1}
+    path = self.create_tempdir().full_path
+    source.to_dataset().chunk().to_zarr(path)
+    actual = xarray_tensorstore.open_zarr(path, mask_and_scale=True)['baz']
+    xarray.testing.assert_identical(actual, source)
+    self.assertEqual(actual.coords['x'].encoding['add_offset'], -1)
+
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'basic_indexing',
+          'key': (slice(1, None), slice(None), slice(None)),
+          'value': np.full((1, 2, 3), -1),
+      },
+      {
+          'testcase_name': 'outer_indexing',
+          'key': (np.array([0]), np.array([1]), slice(None)),
+          'value': np.full((1, 1, 3), -2),
+      },
+      {
+          'testcase_name': 'vectorized_indexing',
+          'key': (np.array([0]), np.array([0, 1]), slice(None)),
+          'value': np.full((2, 3), -3),
+      },
+  )
+  def test_setitem(self, key, value):
+    source_data = np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]])
+    source = xarray.DataArray(
+        source_data,
+        dims=('x', 'y', 'z'),
+        name='baz',
+    )
+    path = self.create_tempdir().full_path
+    source.to_dataset().chunk().to_zarr(path)
+
+    opened = xarray_tensorstore.open_zarr(path, write=True)['baz']
+
+    opened[key] = value
+    read = xarray_tensorstore.read(opened)
+
+    expected_data = source_data.copy()
+    expected_data[key] = value
+    expected = xarray.DataArray(
+        expected_data,
+        dims=('x', 'y', 'z'),
+        name='baz',
+    )
+
+    xarray.testing.assert_equal(read, expected)
+
+  def test_setitem_readonly(self):
+    source = xarray.DataArray(
+        np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]),
+        dims=('x', 'y', 'z'),
+        name='baz',
+    )
+    path = self.create_tempdir().full_path
+    source.to_dataset().chunk().to_zarr(path)
+
+    opened = xarray_tensorstore.open_zarr(path)['baz']
+    with pytest.raises(ValueError):
+      opened[1:, ...] = np.full((1, 2, 3), -1)
+
+
+if __name__ == '__main__':
+  absltest.main()
