@@ -9,6 +9,9 @@ on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   tests:
     name: "python=${{ matrix.python-version }} zarr=${{ matrix.zarr-version }} tests"
@@ -20,13 +23,13 @@ jobs:
         zarr-version: [">=2,<3", ">=3"]
     steps:
     - name: Cancel previous
-      uses: styfle/cancel-workflow-action@0.7.0
+      uses: styfle/cancel-workflow-action@d7e57e26a6f753933f8ef746a37097a61375236b # 0.7.0
       with:
         access_token: ${{ github.token }}
       if: ${{github.ref != 'refs/head/main'}}
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
       with:
         python-version: ${{ matrix.python-version }}
     - name: Get pip cache dir
@@ -35,7 +38,7 @@ jobs:
         python -m pip install --upgrade pip wheel
         echo "::set-output name=dir::$(pip cache dir)"
     - name: pip cache
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
         key: ${{ runner.os }}-pip-${{ hashFiles('**/setup.py') }}
@@ -52,18 +55,70 @@ jobs:
     # * Repo is self (prevents running from forks)
     # * Branch is `main`
     if: |
-      github.repository == 'google/xarray-Tensorstore'
+      github.repository == 'google/xarray-tensorstore'
       && github.ref == 'refs/heads/main'
     needs: tests  # Only publish after tests are successful
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     timeout-minutes: 30
 
     steps:
-    # Publish the package (if local `__version__` > pip version)
-    - uses: etils-actions/pypi-auto-publish@v1
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       with:
-        pypi-token: ${{ secrets.PYPI_API_TOKEN }}
-        gh-token: ${{ secrets.GITHUB_TOKEN }}
-        parse-changelog: false
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.12'
+    - name: Check version and build if new
+      id: check_version
+      run: |
+        python -m pip install --upgrade pip build twine packaging
+        LOCAL_VER=$(python -c "import xarray_tensorstore; print(xarray_tensorstore.__version__)")
+        PYPI_VER=$(python -c "import json, urllib.request; print(json.loads(urllib.request.urlopen('https://pypi.org/pypi/xarray-tensorstore/json').read())['info']['version'])")
+        echo "Local: $LOCAL_VER, PyPI: $PYPI_VER"
+        if python -c "from packaging.version import Version; exit(0 if Version('$LOCAL_VER') > Version('$PYPI_VER') else 1)"; then
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          python -m build
+        else
+          echo "should_publish=false" >> "$GITHUB_OUTPUT"
+        fi
+    - name: Authenticate to Google Cloud (OSS Exit Gate)
+      if: steps.check_version.outputs.should_publish == 'true'
+      uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed
+      with:
+        workload_identity_provider: 'projects/305452601764/locations/global/workloadIdentityPools/builders/providers/github'
+    - name: Set up Cloud SDK
+      if: steps.check_version.outputs.should_publish == 'true'
+      uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f
+    - name: Clean up stale releases from staging repo
+      run: |
+        # clean up stale releases from staging repo
+        packages=$(gcloud artifacts packages list \
+            --project="oss-exit-gate-prod" \
+            --location="us" \
+            --repository="xarray-tensorstore--pypi" \
+            --format="value(name)" 2>/dev/null)
+
+        echo "${packages}" | xargs -r -I {} sh -c '
+            package_name=$(basename "{}")
+            echo "Deleting package: $package_name..."
+            gcloud artifacts packages delete "{}" \
+                --project="oss-exit-gate-prod" \
+                --location="us" \
+                --repository="xarray-tensorstore--pypi" \
+                --quiet
+        '
+
+    - name: Stage to OSS Exit Gate and upload manifest
+      if: steps.check_version.outputs.should_publish == 'true'
+      run: |
+        python -m twine upload \
+          --repository-url "https://us-python.pkg.dev/oss-exit-gate-prod/xarray-tensorstore--pypi/" \
+          -u oauth2accesstoken \
+          -p "$(gcloud auth print-access-token)" \
+          dist/*
+        echo '{"publish_all": true}' > manifest.json
+        gcloud storage cp manifest.json \
+          "gs://oss-exit-gate-prod-projects-bucket/xarray-tensorstore/pypi/manifests/manifest-${{ github.run_id }}-${{ github.run_attempt }}.json"
